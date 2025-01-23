@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "declaration": true, // Generiert .d.ts-Dateien
+    "declarationMap": true, // Optional: Erstellt Maps für Typen
+    "emitDeclarationOnly": false,     // Nur Deklarationen ausgeben (false, damit auch JS kompiliert wird)
+    "outDir": "dist", // Ausgabeort für die Typen
+    "module": "ESNext", // Oder das Modulformat deiner Wahl
+    "target": "ESNext",
+    "moduleResolution": "bundler"
+  },
+    "include": ["src/**/*.ts", "dist/rstore.es.js"],  // Eingeschlossene Dateien
+    "exclude": ["node_modules"]  ,
+      
+  }
