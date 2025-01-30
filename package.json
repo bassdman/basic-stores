@@ -1,5 +1,5 @@
 {
-  "name": "rstores",
+  "name": "basic-stores",
   "version": "0.9.5",
   "description": "Many basic type of Datastores, independant of other Libraries",
   "keywords": [
