@@ -178,8 +178,14 @@ function useDirtyStateStore() {
         on: emitter.on
     };
 }
+function handleConflict(type, key, mode) {
+    const message = `Conflict on ${type} '${key}'`;
+    if (mode === 'error')
+        throw new Error(message);
+    if (mode === 'keep')
+        console.warn(`${message} - keeping existing`);
+}
 function useReactiveStore(initialConfig = {}) {
-    let storeModificationsAllowed = false;
     let stateModificationsAllowed = false;
     const stateInternal = reactiveState({}, stateModificationHandler);
     const eventEmitter = useKeyBasedEventEmitter();
@@ -199,61 +205,58 @@ function useReactiveStore(initialConfig = {}) {
         }
         return true;
     }
-    function $extend({ state = {}, actions = {}, getters = {}, global = {}, mode = 'error' }) {
-        storeModificationsAllowed = true;
-        for (let key of Object.keys(state)) {
-            if (stateInternal.state[key]) {
-                if (mode == 'error') {
-                    throw new Error(`store.extend({state,actions,getters}) failed: Attribute ${key} already exists as state and can not be overwritten by extend.`);
-                }
-                else if (mode == 'keep') {
-                    continue;
-                }
-            }
+    function createExtendMethod(store, ctxInternal, stateInternal) {
+        return function extend(config, mode = 'error') {
             stateModificationsAllowed = true;
-            stateInternal.state[key] = state[key];
+            if (config.state) {
+                for (const key of Object.keys(config.state)) {
+                    if (key in ctxInternal.state) {
+                        handleConflict('state', key, mode);
+                    }
+                    stateInternal.state[key] = config.state[key];
+                }
+            }
+            // Getters handling
+            if (config.getters) {
+                for (const [key, getter] of Object.entries(config.getters)) {
+                    if (key in store) {
+                        handleConflict('getter', key, mode);
+                    }
+                    ctxInternal.getters[key] = (ctx) => getter(ctx);
+                }
+            }
+            // Actions handling
+            if (config.actions) {
+                for (const [key, action] of Object.entries(config.actions)) {
+                    if (key in store) {
+                        handleConflict('action', key, mode);
+                    }
+                    ctxInternal.actions[key] = action;
+                    store[key] = (...args) => {
+                        const prev = stateInternal._modificationsAllowed;
+                        stateInternal._modificationsAllowed = true;
+                        action(ctxInternal, ...args);
+                        stateInternal._modificationsAllowed = prev;
+                    };
+                }
+            }
+            // Globals handling
+            if (config.global) {
+                for (const [key, fn] of Object.entries(config.global)) {
+                    if (key in store) {
+                        handleConflict('global', key, mode);
+                    }
+                    store[key] = fn;
+                }
+            }
             stateModificationsAllowed = false;
-        }
-        for (let action of Object.keys(actions)) {
-            if (ctx[action]) {
-                if (mode == 'error') {
-                    throw new Error(`store.extend({state,actions,getters}) failed: Attribute ${action} already exists and can not be overwritten by extend.`);
-                }
-                else if (mode == 'keep') {
-                    continue;
-                }
-            }
-            ctxInternal.actions[action] = actions[action];
-        }
-        for (let key of Object.keys(getters)) {
-            if (ctx[key]) {
-                if (mode == 'error') {
-                    throw new Error(`store.extend({state,actions,getters}) failed: Attribute ${key} already exists and can not be overwritten by extend.`);
-                }
-                else if (mode == 'keep') {
-                    continue;
-                }
-            }
-            ctxInternal.getters[key] = getters[key];
-        }
-        for (let key of Object.keys(global)) {
-            if (ctx[key]) {
-                if (mode == 'error') {
-                    throw new Error(`store.extend({state,actions,getters}) failed: Attribute ${key} already exists as a getter and can not be overwritten by extend, because mode=='error'.`);
-                }
-                else if (mode == 'keep') {
-                    continue;
-                }
-            }
-            ctx[key] = global[key];
-        }
-        storeModificationsAllowed = false;
+            return store;
+        };
     }
     const ctxData = {
         state: ctxInternal.state,
         $on: eventEmitter.on,
         $emit: eventEmitter.emit,
-        $extend,
         dirtyState
     };
     const ctx = new Proxy(ctxData, {
@@ -297,11 +300,7 @@ function useReactiveStore(initialConfig = {}) {
             return target[key];
         },
         set(target, key, value) {
-            if (storeModificationsAllowed) {
-                target[key] = value;
-                return true;
-            }
-            else if (!target[key]) {
+            if (!target[key]) {
                 console.error(`error when modifing the state. it does not exist...`);
                 return true;
             }
@@ -327,7 +326,8 @@ function useReactiveStore(initialConfig = {}) {
         }
         eventEmitter.emit('change', key, { fullPath, key, keyIncludingGetters, value, target: stateInternal.state, totalTarget });
     }
-    $extend(initialConfig);
+    ctxData.$extend = createExtendMethod(ctx, ctxInternal, stateInternal);
+    ctxData.$extend(initialConfig);
     setTimeout(() => {
         for (let key of Object.keys(ctxInternal.getters)) {
             ctx[key];

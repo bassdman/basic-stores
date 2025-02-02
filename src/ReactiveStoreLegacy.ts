@@ -2,86 +2,44 @@
 import { useEventEmitter, EventCallback, EventPattern, useKeyBasedEventEmitter } from "./EventEmitter";
 import { reactiveState } from "./ReactiveState";
 
-type FunctionWithParams<T> = T extends (...args: any[]) => any
-    ? Parameters<T> extends [] ? never : T
-    : never;
-
-type FunctionWithoutParams<T> = T extends (...args: any[]) => any
-    ? Parameters<T> extends [] ? ReturnType<T> : never
-    : never;
-
-type GettersWrapper<TGetters> = {
-    [K in keyof TGetters]:
-    FunctionWithParams<TGetters[K]> |
-    FunctionWithoutParams<TGetters[K]>;
-};
-
-export type ExtendMode = 'override' | 'keep' | 'error';
-
 export type EventTypes = 'change' | `change-${string}`;
-export type ReactiveStoreContext<TState = Record<string, any>> = {
+export interface ReactiveStoreContext<TState = Record<string, any>> {
     state: TState,
-    [key: string]: any
+    [key:string]:any
 }
 
-type OmitFirstParam<F> = F extends (ctx: any, ...args: infer P) => infer R
-    ? (...args: P) => R
-    : never;
-
-type GetterRecord<State> = Record<string, (ctx: ReactiveStoreContext<State>) => any>;
-type ActionsRecord<State> = Record<string, (ctx: ReactiveStoreContext<State>, ...args: any[]) => void>;
-type GlobalsRecord = Record<string, (...args: any[]) => void>;
-
-
-type InternalContext<State, Getters, Actions, Globals> = {
-    actions: Actions,
-    getters: Getters,
-    state: State,
-    globals: Globals
+interface InternalContext {
+    actions: Record<string, (...args: any[]) => void>
+    getters: Record<string, Function>,
+    state: Record<string, any>,
+    globals: Record<string, any>
 }
 
+export interface Namespace {state:string,getters:string,actions:string,global:string}
 
-export type Namespace = { state: string, getters: string, actions: string, global: string }
-
-export type ReactiveStoreParam<State, Getters = GetterRecord<State>, Actions = ActionsRecord<State>, Globals = GlobalsRecord> = {
+export interface ReactiveStoreParam<State> {
     state?: State,
-    getters?: Getters,
-    actions?: Actions,
-    global?: Globals,
+    getters?: Record<string, (ctx: ReactiveStoreContext<State>) => any>,
+    actions?: Record<string, (ctx: ReactiveStoreContext<State>, ...args: any[]) => void>,
+    global?: Record<string, (...args: any[]) => void>,
     namespace?: Namespace
 }
 
-export type ExtendParam<State> = ReactiveStoreParam<State> & {
-
+export type ExtendMode = 'override' | 'keep' | 'error';
+export interface ExtendParam<State> extends ReactiveStoreParam<State> {
+    mode?: ExtendMode
 };
 
-export type Store<State, Getters, Actions, Globals> = {
+export interface Store<State> {
     state: State,
     $on(event: string, callback: EventCallback): void,
     $on(event: string, pattern: EventPattern, callback: EventCallback): void,
     $on(event: string, callbackOrPattern: EventCallback | EventPattern, callback?: EventCallback),
     $emit: (eventName: string, ...args: any[]) => void,
-} & {
-    [K in keyof Getters]: OmitFirstParam<Getters[K]>
-} & {
-    [K in keyof Actions]: OmitFirstParam<Actions[K]>
-} & Globals & {
-    $extend: <
-        NewState extends Record<string, any>,
-        NewGetters extends Record<string, (ctx: any) => any>,
-        NewActions extends Record<string, (ctx: any, ...args: any[]) => any>,
-        NewGlobals extends Record<string, (...args: any[]) => any>
-    >(
-        config: ReactiveStoreParam<NewState, NewGetters, NewActions, NewGlobals>,
-        mode?: ExtendMode
-    ) => Store<
-        State & NewState,
-        Getters & NewGetters,
-        Actions & { [K in keyof NewActions]: OmitFirstParam<NewActions[K]> },
-        Globals & NewGlobals
-    >;
-};
+    $extend: (param: ExtendParam<State>) => void,
+    [name: string]: any,
 
+}
 
 function useStateDependencies() {
     const dependencies = {};
@@ -159,7 +117,7 @@ function useStateDependencies() {
 
 function useDirtyStateStore() {
     const dirtyResults: Set<string> = new Set([]);
-    const calledFunctions: Set<string> = new Set([]);
+    const calledFunctions :Set<string> = new Set([]);
     const emitter = useEventEmitter();
 
     let trackDirtyness = false;
@@ -167,15 +125,15 @@ function useDirtyStateStore() {
     function startTracking(key) {
         calledFunctions.add(key);
         trackDirtyness = true;
-        emitter.emit('start-tracking', key, { dirtyResults, calledFunctions, key });
+        emitter.emit('start-tracking',key,{dirtyResults,calledFunctions,key});
     }
     function stopTracking(key) {
         trackDirtyness = false;
         calledFunctions.delete(key);
 
-        emitter.emit('stop-tracking', key, { dirtyResults, calledFunctions, key, clear: !calledFunctions.size });
+        emitter.emit('stop-tracking',key,{dirtyResults,calledFunctions,key, clear: !calledFunctions.size});
 
-        if (!calledFunctions.size)
+        if(!calledFunctions.size)
             dirtyResults.clear();
     }
 
@@ -194,127 +152,115 @@ function useDirtyStateStore() {
         stopTracking,
         setDirtyIfAllowed,
         isDirty,
-        on: emitter.on
+        on:emitter.on
     }
 }
 
-function handleConflict(type: string, key: string, mode: ExtendMode) {
-    const message = `Conflict on ${type} '${key}'`;
-    if (mode === 'error') throw new Error(message);
-    if (mode === 'keep') console.warn(`${message} - keeping existing`);
-}
 
 
-
-
-export function useReactiveStore<
-    RState extends Record<string, any>,
-    RGetters extends Record<string, (ctx: any) => any>,
-    RActions extends Record<string, (ctx: any, ...args: any[]) => any>,
-    RGlobals extends Record<string, (...args: any[]) => any>>(initialConfig: ReactiveStoreParam<RState, RGetters, RActions, RGlobals> = {}) {
+export function useReactiveStore(initialConfig: ReactiveStoreParam<any> = {}) {
     let storeModificationsAllowed = false;
     let stateModificationsAllowed = false;
-    const stateInternal = reactiveState({}, stateModificationHandler);
+    const stateInternal = reactiveState({},stateModificationHandler);
     const eventEmitter = useKeyBasedEventEmitter();
     const stateDependencies = useStateDependencies();
     const dirtyState = useDirtyStateStore();
     const namespace = initNamespace(initialConfig.namespace);
     const resultCache = {};
 
-    const ctxInternal = {
+    const ctxInternal: InternalContext = {
         state: stateInternal.state,
         actions: {},
         getters: {},
         globals: {}
-    } as InternalContext<RState, RGetters, RActions, RGlobals>;
+    };
 
-    function stateModificationHandler(key, value, target) {
-        if (!stateModificationsAllowed) {
+    function stateModificationHandler(key,value, target){
+        if(!stateModificationsAllowed){
             throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(target)} with ${key}=${value} outside.`)
         }
         return true;
     }
 
-    function createExtendMethod(store: any, ctxInternal: any, stateInternal: any) {
-        return function extend<
-            NewState extends Record<string, any>,
-            NewGetters extends Record<string, (ctx: any) => any>,
-            NewActions extends Record<string, (ctx: any, ...args: any[]) => any>,
-            NewGlobals extends Record<string, (...args: any[]) => any>
-        >(
-            config: ReactiveStoreParam<NewState, NewGetters, NewActions, NewGlobals>,
-            mode: ExtendMode = 'error'
-        ) {
+    function $extend({ state = {}, actions = {}, getters = {}, global = {}, mode = 'error' }: ExtendParam<any>): void {
+        storeModificationsAllowed = true;
+
+        for (let key of Object.keys(state)) {
+
+            if (stateInternal.state[key]) {
+                if (mode == 'error') {
+                    throw new Error(`store.extend({state,actions,getters}) failed: Attribute ${key} already exists as state and can not be overwritten by extend.`);
+                }
+                else if (mode == 'keep') {
+                    continue;
+                }
+            }
             stateModificationsAllowed = true;
-
-            if (config.state) {
-                for (const key of Object.keys(config.state)) {
-                    if (key in ctxInternal.state) {
-                        handleConflict('state', key, mode);
-                    }
-                    stateInternal.state[key] = config.state[key];
-                }
-            }
-    
-            // Getters handling
-            if (config.getters) {
-                for (const [key, getter] of Object.entries(config.getters)) {
-                    if (key in store) {
-                        handleConflict('getter', key, mode);
-                    }
-                    ctxInternal.getters[key] = (ctx: any) => getter(ctx);
-                }
-            }
-    
-            // Actions handling
-            if (config.actions) {
-                for (const [key, action] of Object.entries(config.actions)) {
-                    if (key in store) {
-                        handleConflict('action', key, mode);
-                    }
-                    ctxInternal.actions[key] = action;
-                    store[key] = (...args: any[]) => {
-                        const prev = stateInternal._modificationsAllowed;
-                        stateInternal._modificationsAllowed = true;
-                        action(ctxInternal, ...args);
-                        stateInternal._modificationsAllowed = prev;
-                    };
-                }
-            }
-    
-            // Globals handling
-            if (config.global) {
-                for (const [key, fn] of Object.entries(config.global)) {
-                    if (key in store) {
-                        handleConflict('global', key, mode);
-                    }
-                    store[key] = fn;
-                }
-            }
-
+            stateInternal.state[key] = state[key];
             stateModificationsAllowed = false;
-    
-            return store as any;
-        };
-    }    
+        }
 
-    const ctxData = {
-        state: ctxInternal.state,
+        for (let action of Object.keys(actions)) {
+            if (ctx[action]) {
+                if (mode == 'error') {
+                    throw new Error(`store.extend({state,actions,getters}) failed: Attribute ${action} already exists and can not be overwritten by extend.`);
+                }
+                else if (mode == 'keep') {
+                    continue;
+                }
+            }
+
+            ctxInternal.actions[action] = actions[action];
+        }
+
+        for (let key of Object.keys(getters)) {
+            if (ctx[key]) {
+                if (mode == 'error') {
+                    throw new Error(`store.extend({state,actions,getters}) failed: Attribute ${key} already exists and can not be overwritten by extend.`);
+                }
+                else if (mode == 'keep') {
+                    continue;
+                }
+            }
+
+            ctxInternal.getters[key] = getters[key];
+
+        }
+
+        for (let key of Object.keys(global)) {
+            if (ctx[key]) {
+                if (mode == 'error') {
+                    throw new Error(`store.extend({state,actions,getters}) failed: Attribute ${key} already exists as a getter and can not be overwritten by extend, because mode=='error'.`);
+                }
+                else if (mode == 'keep') {
+                    continue;
+                }
+            }
+
+            ctx[key] = global[key];
+        }
+
+        storeModificationsAllowed = false;
+    }
+
+    const ctxData: Store<any> = {
+        state:ctxInternal.state,
         $on: eventEmitter.on,
         $emit: eventEmitter.emit,
+        $extend,
         dirtyState
-    } as unknown as Store<RState, RGetters, RActions, RGlobals>;
+    }
 
     const ctx = new Proxy(ctxData, {
         get(target, key: string) {
             dirtyState.setDirtyIfAllowed(key);
-
+            
             if (ctxInternal.state[key] != undefined) {
                 stateDependencies.addPossibleDependency(key);
                 return ctxInternal.state[key];
             }
 
-            let gettersFn = ctxInternal.getters[key];
+            let gettersFn = ctxInternal.getters[key as keyof typeof target];
 
             if (gettersFn != undefined) {
                 stateDependencies.startDependencyTracking(key);
@@ -334,21 +280,21 @@ export function useReactiveStore<
                 return result;
             }
 
-            const actionFn = ctxInternal.actions[key];
-            if (actionFn !== undefined) {
-                return function (...args: any[]) {
+            const actionFn = ctxInternal.actions[key as keyof typeof target];
+            if(actionFn !== undefined){
+                return function(...args:any[]){
                     stateModificationsAllowed = true;
                     dirtyState.startTracking(key);
-                    actionFn(ctx, ...args);
-                    setTimeout(() => {
+                    actionFn(ctx,...args);
+                    setTimeout(()=>{
                         dirtyState.stopTracking(key)
-                    }, 0);
+                    },0);
                     stateModificationsAllowed = false;
                 }
             }
 
-            const globalsFn = ctxInternal.globals[key];
-            if (globalsFn !== undefined) {
+            const globalsFn = ctxInternal.globals[key as keyof typeof target];
+            if(globalsFn !== undefined){
                 return globalsFn;
             }
 
@@ -368,12 +314,12 @@ export function useReactiveStore<
         }
     });
 
-    function initNamespace(namespaceParam?: string | Namespace): Namespace {
-        if (!namespaceParam) {
-            return { state: 'state', getters: '', actions: '', global: '' };
+    function initNamespace(namespaceParam?:string|Namespace): Namespace{
+        if(!namespaceParam){
+            return {state:'state',getters:'',actions:'',global:''}; 
         }
-        if (typeof namespaceParam == 'string') {
-            return { state: namespaceParam, getters: namespaceParam, actions: namespaceParam, global: namespaceParam };
+        if(typeof namespaceParam == 'string'){
+            return {state:namespaceParam,getters:namespaceParam,actions:namespaceParam, global:namespaceParam};
         }
         return namespaceParam;
     }
@@ -390,9 +336,7 @@ export function useReactiveStore<
         eventEmitter.emit('change', key, { fullPath, key, keyIncludingGetters, value, target: stateInternal.state, totalTarget });
     }
 
-    ctxData.$extend = createExtendMethod(ctx, ctxInternal, stateInternal);
-
-    ctxData.$extend(initialConfig);
+    $extend(initialConfig) ;
 
     setTimeout(() => {
         for (let key of Object.keys(ctxInternal.getters)) {

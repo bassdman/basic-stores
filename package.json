@@ -15,6 +15,7 @@
   "scripts": {
     "pretest": "npm run build",
     "test": "tsx --test tests/**/*.test.ts",
+    "testonly": "tsx --test tests/**/*.test.ts",
     "build": "rollup -c rollup.config.js"
   },
   "devDependencies": {
