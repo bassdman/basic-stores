@@ -2,8 +2,8 @@ import { describe, it, test, } from "node:test";
 import assert from "node:assert";
 import { useReactiveStore } from '../src/ReactiveStore';
 
-describe('using constructor', () => {
-  it('it should have a var1 with value 1', (t) => {
+describe('store using constructor', () => {
+  it('should have a var1 with value 1', (t) => {
     const store = useReactiveStore({
       state: {
         var1: 1
@@ -50,8 +50,8 @@ describe('using constructor', () => {
 
 });
 
-describe('using Extend-Method in new line', () => {
-  it('should store should have getter', (t) => {
+describe('store using Extend-Method in new line', () => {
+  it('should have getter', (t) => {
     const store = useReactiveStore();
     store.$extend({
       state: {
@@ -106,8 +106,8 @@ describe('using Extend-Method in new line', () => {
   });
 });
 
-describe('using Extend-Method directlyCalled', () => {
-  it('should store should have getter', (t) => {
+describe('store using Extend-Method directlyCalled', () => {
+  it('should have getter', (t) => {
     const store = useReactiveStore().$extend({
       state: {
         var1: 1
@@ -190,7 +190,7 @@ describe('Store-Getters',()=>{
   
     assert.strictEqual(store.pi, 3.1415);
   });
-  /*it('store-getter returning number with 2 parameters should return number', (t) => {
+  it('store-getter returning number with 2 parameters should return function', (t) => {
     const store = useReactiveStore().$extend({
       state: {
         var1: 1
@@ -202,6 +202,6 @@ describe('Store-Getters',()=>{
       }
     });
   
-    assert.strictEqual(typeof store.pi, 'number');
-  });*/
+    assert.strictEqual(typeof store.pi(), 'function');
+  });
 });

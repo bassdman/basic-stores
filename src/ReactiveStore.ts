@@ -2,19 +2,6 @@
 import { useEventEmitter, EventCallback, EventPattern, useKeyBasedEventEmitter } from "./EventEmitter";
 import { reactiveState } from "./ReactiveState";
 
-type FunctionWithParams<T> = T extends (...args: any[]) => any
-    ? Parameters<T> extends [] ? never : T
-    : never;
-
-type FunctionWithoutParams<T> = T extends (...args: any[]) => any
-    ? Parameters<T> extends [] ? ReturnType<T> : never
-    : never;
-
-type GettersWrapper<TGetters> = {
-    [K in keyof TGetters]:
-    FunctionWithParams<TGetters[K]> |
-    FunctionWithoutParams<TGetters[K]>;
-};
 
 export type ExtendMode = 'override' | 'keep' | 'error';
 
@@ -28,7 +15,7 @@ type OmitFirstParam<F> = F extends (ctx: any, ...args: infer P) => infer R
     ? (...args: P) => R
     : never;
 
-type GetterRecord<State> = Record<string, (ctx: ReactiveStoreContext<State>) => any>;
+type GetterRecord<State> = Record<string, (ctx: ReactiveStoreContext<State>,...args: any[]) => any>;
 type ActionsRecord<State> = Record<string, (ctx: ReactiveStoreContext<State>, ...args: any[]) => void>;
 type GlobalsRecord = Record<string, (...args: any[]) => void>;
 
@@ -68,7 +55,7 @@ export type Store<State, Getters, Actions, Globals> = {
 } & Globals & {
     $extend: <
         NewState extends Record<string, any>,
-        NewGetters extends Record<string, (ctx: any) => any>,
+        NewGetters extends Record<string, (ctx: any, ...args: any[]) => any>,
         NewActions extends Record<string, (ctx: any, ...args: any[]) => any>,
         NewGlobals extends Record<string, (...args: any[]) => any>
     >(
@@ -209,7 +196,7 @@ function handleConflict(type: string, key: string, mode: ExtendMode) {
 
 export function useReactiveStore<
     RState extends Record<string, any>,
-    RGetters extends Record<string, (ctx: any) => any>,
+    RGetters extends Record<string, (ctx: any,...args:any[]) => any>,
     RActions extends Record<string, (ctx: any, ...args: any[]) => any>,
     RGlobals extends Record<string, (...args: any[]) => any>>(initialConfig: ReactiveStoreParam<RState, RGetters, RActions, RGlobals> = {}) {
     let storeModificationsAllowed = false;
@@ -238,7 +225,7 @@ export function useReactiveStore<
     function createExtendMethod(store: any, ctxInternal: any, stateInternal: any) {
         return function extend<
             NewState extends Record<string, any>,
-            NewGetters extends Record<string, (ctx: any) => any>,
+            NewGetters extends Record<string, (ctx: any,...args: any[]) => any>,
             NewActions extends Record<string, (ctx: any, ...args: any[]) => any>,
             NewGlobals extends Record<string, (...args: any[]) => any>
         >(
@@ -262,7 +249,7 @@ export function useReactiveStore<
                     if (key in store) {
                         handleConflict('getter', key, mode);
                     }
-                    ctxInternal.getters[key] = (ctx: any) => getter(ctx);
+                    ctxInternal.getters[key] = (ctx: any,...args:any[]) => getter(ctx,...args);
                 }
             }
     

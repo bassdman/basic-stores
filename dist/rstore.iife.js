@@ -225,7 +225,7 @@ var rstore = (function (exports) {
                         if (key in store) {
                             handleConflict('getter', key, mode);
                         }
-                        ctxInternal.getters[key] = (ctx) => getter(ctx);
+                        ctxInternal.getters[key] = (ctx, ...args) => getter(ctx, ...args);
                     }
                 }
                 // Actions handling
