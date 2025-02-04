@@ -15,7 +15,7 @@ type OmitFirstParam<F> = F extends (ctx: any, ...args: infer P) => infer R
     ? (...args: P) => R
     : never;
 
-type GetterRecord<State> = Record<string, (ctx: ReactiveStoreContext<State>,...args: any[]) => any>;
+type GetterRecord<State> = Record<string, (ctx: ReactiveStoreContext<State>, ...args: any[]) => any>;
 type ActionsRecord<State> = Record<string, (ctx: ReactiveStoreContext<State>, ...args: any[]) => void>;
 type GlobalsRecord = Record<string, (...args: any[]) => void>;
 
@@ -196,7 +196,7 @@ function handleConflict(type: string, key: string, mode: ExtendMode) {
 
 export function useReactiveStore<
     RState extends Record<string, any>,
-    RGetters extends Record<string, (ctx: any,...args:any[]) => any>,
+    RGetters extends Record<string, (ctx: any, ...args: any[]) => any>,
     RActions extends Record<string, (ctx: any, ...args: any[]) => any>,
     RGlobals extends Record<string, (...args: any[]) => any>>(initialConfig: ReactiveStoreParam<RState, RGetters, RActions, RGlobals> = {}) {
     let storeModificationsAllowed = false;
@@ -225,7 +225,7 @@ export function useReactiveStore<
     function createExtendMethod(store: any, ctxInternal: any, stateInternal: any) {
         return function extend<
             NewState extends Record<string, any>,
-            NewGetters extends Record<string, (ctx: any,...args: any[]) => any>,
+            NewGetters extends Record<string, (ctx: any, ...args: any[]) => any>,
             NewActions extends Record<string, (ctx: any, ...args: any[]) => any>,
             NewGlobals extends Record<string, (...args: any[]) => any>
         >(
@@ -242,17 +242,17 @@ export function useReactiveStore<
                     stateInternal.state[key] = config.state[key];
                 }
             }
-    
+
             // Getters handling
             if (config.getters) {
                 for (const [key, getter] of Object.entries(config.getters)) {
                     if (key in store) {
                         handleConflict('getter', key, mode);
                     }
-                    ctxInternal.getters[key] = (ctx: any,...args:any[]) => getter(ctx,...args);
                 }
+                ctxInternal.getters = config.getters;
             }
-    
+
             // Actions handling
             if (config.actions) {
                 for (const [key, action] of Object.entries(config.actions)) {
@@ -268,7 +268,7 @@ export function useReactiveStore<
                     };
                 }
             }
-    
+
             // Globals handling
             if (config.global) {
                 for (const [key, fn] of Object.entries(config.global)) {
@@ -280,10 +280,10 @@ export function useReactiveStore<
             }
 
             stateModificationsAllowed = false;
-    
+
             return store as any;
         };
-    }    
+    }
 
     const ctxData = {
         state: ctxInternal.state,
@@ -304,21 +304,32 @@ export function useReactiveStore<
             let gettersFn = ctxInternal.getters[key];
 
             if (gettersFn != undefined) {
-                stateDependencies.startDependencyTracking(key);
 
-                let result;
-                if (dirtyState.isDirty() || !resultCache[key]) {
-                    result = gettersFn(ctx);
-                    resultCache[key] = result;
+                if (gettersFn.length <= 1) {
+                    stateDependencies.startDependencyTracking(key);
+
+                    let result;
+                    if (dirtyState.isDirty() || !resultCache[key]) {
+                        result = gettersFn(ctx);
+                        resultCache[key] = result;
+                    }
+                    else {
+                        result = resultCache[key];
+                        //result = gettersFn(ctx);
+                    }
+
+                    stateDependencies.finishDependencyTracking(key);
+
+                    return result;
                 }
                 else {
-                    result = resultCache[key];
-                    //result = gettersFn(ctx);
+                    return (...args: any[]) => {
+                        stateDependencies.startDependencyTracking(key);
+                        const result = gettersFn(ctx, ...args);
+                        stateDependencies.finishDependencyTracking(key);
+                        return result;
+                    };
                 }
-
-                stateDependencies.finishDependencyTracking(key);
-
-                return result;
             }
 
             const actionFn = ctxInternal.actions[key];

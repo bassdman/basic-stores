@@ -201,7 +201,7 @@ describe('Store-Getters',()=>{
         },
       }
     });
-  
-    assert.strictEqual(typeof store.pi(), 'function');
+    assert.strictEqual(typeof store.sum, 'function');
+    assert.strictEqual(store.sum(3), 4);
   });
 });

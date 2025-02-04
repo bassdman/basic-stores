@@ -225,8 +225,8 @@ var rstore = (function (exports) {
                         if (key in store) {
                             handleConflict('getter', key, mode);
                         }
-                        ctxInternal.getters[key] = (ctx, ...args) => getter(ctx, ...args);
                     }
+                    ctxInternal.getters = config.getters;
                 }
                 // Actions handling
                 if (config.actions) {
@@ -271,18 +271,28 @@ var rstore = (function (exports) {
                 }
                 let gettersFn = ctxInternal.getters[key];
                 if (gettersFn != undefined) {
-                    stateDependencies.startDependencyTracking(key);
-                    let result;
-                    if (dirtyState.isDirty() || !resultCache[key]) {
-                        result = gettersFn(ctx);
-                        resultCache[key] = result;
+                    if (gettersFn.length <= 1) {
+                        stateDependencies.startDependencyTracking(key);
+                        let result;
+                        if (dirtyState.isDirty() || !resultCache[key]) {
+                            result = gettersFn(ctx);
+                            resultCache[key] = result;
+                        }
+                        else {
+                            result = resultCache[key];
+                            //result = gettersFn(ctx);
+                        }
+                        stateDependencies.finishDependencyTracking(key);
+                        return result;
                     }
                     else {
-                        result = resultCache[key];
-                        //result = gettersFn(ctx);
+                        return (...args) => {
+                            stateDependencies.startDependencyTracking(key);
+                            const result = gettersFn(ctx, ...args);
+                            stateDependencies.finishDependencyTracking(key);
+                            return result;
+                        };
                     }
-                    stateDependencies.finishDependencyTracking(key);
-                    return result;
                 }
                 const actionFn = ctxInternal.actions[key];
                 if (actionFn !== undefined) {
