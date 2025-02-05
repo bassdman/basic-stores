@@ -363,7 +363,6 @@ export function useReactiveStore<
             }
             else if (!target[key as keyof typeof target]) {
                 console.error(`error when modifing the state. it does not exist...;`)
-                console.log('xxx',target,key)
                 return true;
             }
 

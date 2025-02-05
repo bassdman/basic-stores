@@ -318,7 +318,6 @@ var BasicStores = (function (exports) {
             set(target, key, value) {
                 if (!target[key]) {
                     console.error(`error when modifing the state. it does not exist...;`);
-                    console.log('xxx', target, key);
                     return true;
                 }
                 return false;
