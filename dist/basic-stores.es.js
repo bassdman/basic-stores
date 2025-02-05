@@ -199,6 +199,9 @@ function useReactiveStore(initialConfig = {}) {
         getters: {},
         globals: {}
     };
+    dirtyState.on('dirty-state', (...args) => {
+        eventEmitter.emit('dirty-state', 'dirtystate', args);
+    });
     function stateModificationHandler(key, value, target) {
         if (!stateModificationsAllowed) {
             throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(target)} with ${key}=${value} outside.`);
@@ -311,7 +314,8 @@ function useReactiveStore(initialConfig = {}) {
         },
         set(target, key, value) {
             if (!target[key]) {
-                console.error(`error when modifing the state. it does not exist...`);
+                console.error(`error when modifing the state. it does not exist...;`);
+                console.log('xxx', target, key);
                 return true;
             }
             return false;

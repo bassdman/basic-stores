@@ -1,6 +1,6 @@
 import { describe, it, test, } from "node:test";
 import assert from "node:assert";
-import { useReactiveStore } from '../dist/rstore.es';
+import { useReactiveStore } from '../dist/basic-stores.es';
 
 it('store should have a var1 with value 1', (t) => {
   const store = useReactiveStore({

@@ -1,4 +1,4 @@
-var rstore = (function (exports) {
+var BasicStores = (function (exports) {
     'use strict';
 
     function useEventEmitter() {
@@ -202,6 +202,9 @@ var rstore = (function (exports) {
             getters: {},
             globals: {}
         };
+        dirtyState.on('dirty-state', (...args) => {
+            eventEmitter.emit('dirty-state', 'dirtystate', args);
+        });
         function stateModificationHandler(key, value, target) {
             if (!stateModificationsAllowed) {
                 throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(target)} with ${key}=${value} outside.`);
@@ -314,7 +317,8 @@ var rstore = (function (exports) {
             },
             set(target, key, value) {
                 if (!target[key]) {
-                    console.error(`error when modifing the state. it does not exist...`);
+                    console.error(`error when modifing the state. it does not exist...;`);
+                    console.log('xxx', target, key);
                     return true;
                 }
                 return false;

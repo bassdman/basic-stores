@@ -8,7 +8,7 @@
     "target": "ESNext",
     "moduleResolution": "bundler"
   },
-    "include": ["src/**/*.ts", "dist/rstore.es.js"],  // Eingeschlossene Dateien
+    "include": ["src/**/*.ts", "dist/basic-stores.es.js"],  // Eingeschlossene Dateien
     "exclude": ["node_modules"]  ,
       
   }

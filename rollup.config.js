@@ -6,13 +6,13 @@ export default defineConfig([{
   input: "src/index.ts",
   output: [
     {
-      file: 'dist/rstore.es.js',
+      file: 'dist/basic-stores.es.js',
       format: 'es',
     },
     {
-      file: 'dist/rstore.iife.js',
+      file: 'dist/basic-stores.iife.js',
       format: 'iife',
-      name: 'rstore'
+      name: 'BasicStores'
     },
   ],
   plugins: [
@@ -23,7 +23,7 @@ export default defineConfig([{
 },{
   input: 'src/index.ts',
   output: {
-    file: 'dist/rstore.d.ts',
+    file: 'dist/basic-stores.d.ts',
     format: 'es',
   },
   plugins: [

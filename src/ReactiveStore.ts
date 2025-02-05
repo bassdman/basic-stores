@@ -215,6 +215,10 @@ export function useReactiveStore<
         globals: {}
     } as InternalContext<RState, RGetters, RActions, RGlobals>;
 
+    dirtyState.on('dirty-state',(...args)=>{
+        eventEmitter.emit('dirty-state','dirtystate',args)
+      })
+
     function stateModificationHandler(key, value, target) {
         if (!stateModificationsAllowed) {
             throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(target)} with ${key}=${value} outside.`)
@@ -358,7 +362,8 @@ export function useReactiveStore<
                 return true;
             }
             else if (!target[key as keyof typeof target]) {
-                console.error(`error when modifing the state. it does not exist...`)
+                console.error(`error when modifing the state. it does not exist...;`)
+                console.log('xxx',target,key)
                 return true;
             }
 

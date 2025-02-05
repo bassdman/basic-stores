@@ -9,13 +9,14 @@
   ],
   "license": "MIT",
   "author": "Manuel Gelsen",
-  "main": "dist/rstore.es.js",
-  "types": "dist/rstore.d.ts",
+  "main": "dist/basic-stores.es.js",
+  "types": "dist/basic-stores.d.ts",
   "type": "module",
   "scripts": {
-    "pretest": "npm run build",
     "test": "tsx --test tests/**/*.test.ts",
-    "testonly": "tsx --test tests/**/*.test.ts",
+    "testonly": "tsx --test-only --test tests/**/*.test.ts",
+    "pretesttemp": "npm run build",
+    "testtemp": "tsx temp/test.ts",
     "build": "rollup -c rollup.config.js"
   },
   "devDependencies": {
