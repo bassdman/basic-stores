@@ -74,7 +74,7 @@ describe('Store-Caching',()=>{
     assert.strictEqual(count, 1);
   });
 
-  it.skip('getter-function should be internally called before and after state-value changed',()=>{
+  it('getter-function should be internally called before state-value changed, but not afterwards',()=>{
     let count = 0;
     const store = useReactiveStore({
       state: {
@@ -99,6 +99,6 @@ describe('Store-Caching',()=>{
     store.pi;
     store.pi;
     store.pi;
-    assert.strictEqual(count, 2);
+    assert.strictEqual(count, 1);
   });
 });

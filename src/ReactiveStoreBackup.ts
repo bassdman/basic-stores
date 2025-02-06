@@ -1,7 +1,5 @@
 
 import { useEventEmitter, EventCallback, EventPattern, useKeyBasedEventEmitter } from "./EventEmitter";
-import { createRecursiveProxy } from "./lib/lib";
-import { createReactiveObject } from "./ReactiveObject";
 import { reactiveState } from "./ReactiveState";
 
 
@@ -73,7 +71,6 @@ export type Store<State, Getters, Actions, Globals> = {
 
 
 function useStateDependencies() {
-    const emitter = useEventEmitter();
     const dependencies = {};
     const dependenciesReverse = {};
     let callStack: string[] = [];
@@ -99,11 +96,8 @@ function useStateDependencies() {
 
     function startDependencyTracking(key) {
         callStack.push(key);
-        emitter.emit('start-dependency-tracking',{dependencies,dependenciesReverse,callStack,key,'action':'start'});
     }
     function finishDependencyTracking(key) {
-        emitter.emit('stop-dependency-tracking',{dependencies,dependenciesReverse,callStack,key,'action':'stop'});
-
         let dependenciesOfKey = dependenciesReverse[key] || [];
 
 
@@ -142,17 +136,11 @@ function useStateDependencies() {
         return dependencies[key] || []
     }
 
-    function getReverseDependenciesOf(key) {
-        return dependencies[key] || []
-    }
-
     return {
-        on: emitter.on,
         addPossibleDependency,
         startDependencyTracking,
         finishDependencyTracking,
-        getDependenciesOf,
-        getReverseDependenciesOf,
+        getDependenciesOf
     }
 }
 
@@ -166,13 +154,13 @@ function useDirtyStateStore() {
     function startTracking(key) {
         calledFunctions.add(key);
         trackDirtyness = true;
-        emitter.emit('start-tracking', key, { dirtyResults, calledFunctions, key, action: 'start-tracking' });
+        emitter.emit('start-tracking', key, { dirtyResults, calledFunctions, key });
     }
     function stopTracking(key) {
         trackDirtyness = false;
         calledFunctions.delete(key);
 
-        emitter.emit('stop-tracking', key, { dirtyResults, calledFunctions, key, clear: !calledFunctions.size, action: 'stop-tracking' });
+        emitter.emit('stop-tracking', key, { dirtyResults, calledFunctions, key, clear: !calledFunctions.size });
 
         if (!calledFunctions.size)
             dirtyResults.clear();
@@ -227,18 +215,9 @@ export function useReactiveStore<
         globals: {}
     } as InternalContext<RState, RGetters, RActions, RGlobals>;
 
-    dirtyState.on('start-tracking',(key,params)=>{
-        eventEmitter.emit('dirty-state','start-tracking',params)
-    });
-    dirtyState.on('stop-tracking',(key,params)=>{
-        eventEmitter.emit('dirty-state','stop-tracking',params)
-    });
-    stateDependencies.on('start-dependency-tracking',(data)=>{
-        eventEmitter.emit('dependencies','start',data);
-    });
-    stateDependencies.on('stop-dependency-tracking',(data)=>{
-        eventEmitter.emit('dependencies','stop',data);
-    });
+    dirtyState.on('dirty-state',(...args)=>{
+        eventEmitter.emit('dirty-state','dirtystate',args)
+      })
 
     function stateModificationHandler(key, value, target) {
         if (!stateModificationsAllowed) {
@@ -319,7 +298,6 @@ export function useReactiveStore<
 
     const ctx = new Proxy(ctxData, {
         get(target, key: string) {
-            console.log('getkey=',key)
             dirtyState.setDirtyIfAllowed(key);
 
             if (ctxInternal.state[key] != undefined) {
@@ -330,7 +308,6 @@ export function useReactiveStore<
             let gettersFn = ctxInternal.getters[key];
 
             if (gettersFn != undefined) {
-                stateDependencies.addPossibleDependency(key);
 
                 if (gettersFn.length <= 1) {
                     stateDependencies.startDependencyTracking(key);
@@ -361,16 +338,14 @@ export function useReactiveStore<
 
             const actionFn = ctxInternal.actions[key];
             if (actionFn !== undefined) {
-                console.log('---start action')
                 return function (...args: any[]) {
                     stateModificationsAllowed = true;
                     dirtyState.startTracking(key);
                     actionFn(ctx, ...args);
-                 //   setTimeout(() => {
-                    dirtyState.stopTracking(key)
-                 //   }, 0);
+                    setTimeout(() => {
+                        dirtyState.stopTracking(key)
+                    }, 0);
                     stateModificationsAllowed = false;
-                    console.log('---finish action')
                 }
             }
 
@@ -421,21 +396,17 @@ export function useReactiveStore<
 
     ctxData.$extend(initialConfig);
 
-   // setTimeout(() => {
-   console.log('---start init dependencies')
-   for (let key of Object.keys(ctxInternal.getters)) {
-            stateDependencies.startDependencyTracking(key)
+    setTimeout(() => {
+        for (let key of Object.keys(ctxInternal.getters)) {
             ctx[key];
-            stateDependencies.finishDependencyTracking(key);
         }
-        console.log('---stop init dependencies')
-   // }, 0);
 
-   
-   stateInternal.on('change', (event) => {
-       stateModificationsAllowed = false;
-       stateDependencies.addPossibleDependency(event.key);
-       emitOnChange(event);
-   });
-   return ctx;
+    }, 0);
+
+    stateInternal.on('change', (event) => {
+        stateModificationsAllowed = false;
+        emitOnChange(event);
+    });
+
+    return ctx;
 }

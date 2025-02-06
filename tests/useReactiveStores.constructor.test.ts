@@ -47,5 +47,4 @@ describe('store using constructor', () => {
     assert.strictEqual(store.fourTimes, 12);
     assert.strictEqual(store.eightTimes, 24);
   });
-
 });
