@@ -15,6 +15,7 @@
   "scripts": {
     "test": "tsx --test tests/**/*.test.ts",
     "testonly": "tsx --test-only --test tests/**/*.test.ts",
+    "testusedirtyfunctions": "tsx --test tests/**/useDirtyFunctions.test.ts",
     "pretesttemp": "npm run build",
     "testtemp": "tsx temp/test.ts",
     "build": "rollup -c rollup.config.js"
