@@ -108,51 +108,6 @@ describe('store using Extend-Method directlyCalled', () => {
     assert.strictEqual(store.state.var1, 3);
     assert.strictEqual(store.double, 6);
     assert.strictEqual(store.fourTimes, 12);
-    assert.strictEqual(store.eightTimes, 24);
-  });
-
-  it.only('should update getters recursively after running an action', (t) => {
-    const store = useReactiveStore({
-      state: {
-        var1: 1
-      },
-      actions: {
-        modify(ctx) {
-          console.log('modify')
-          ctx.state.var1 = 3
-        }
-      },
-      getters: {
-        double(ctx) {
-          console.log('double');
-          return ctx.state.var1 * 2;
-        },
-        fourTimes(ctx) {
-          console.log('fourtimes');
-          return ctx.double * 2;
-        },
-        eightTimes(ctx) {
-          console.log('eighttimes');
-          return ctx.fourTimes * 2;
-        }
-      }
-    });
-
-    store.$on('dependencies',(data)=>{
-    //  console.log('change dependency',data)
-    })
-
-    console.log('var1=1',store.state.var1);
-    console.log('double=2',store.double);
-    console.log('fourTimes=4',store.fourTimes);
-    console.log('eightTimes=8',store.eightTimes);
-
-    console.log('modify(var1=3)');
-    store.modify();
-
-    console.log('var1=3;',store.state.var1);
-    console.log('double=6;',store.double);
-    console.log('fourTimes=12;',store.fourTimes);
-    console.log('eightTimes=24;',store.eightTimes);
+    assert.strictEqual(store.eightTimes, 24)
   });
 });

@@ -34,6 +34,7 @@ describe('Store-Caching',()=>{
     });
 
     store.pi;
+    
     assert.strictEqual(count, 1);
   });
 

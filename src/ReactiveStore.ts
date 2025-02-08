@@ -2,7 +2,6 @@
 import { createCachedStore } from "./CachedStore";
 import { useEventEmitter, EventCallback, EventPattern, useKeyBasedEventEmitter } from "./EventEmitter";
 import { createRecursiveProxy } from "./lib/lib";
-import { createReactiveObject } from "./ReactiveObject";
 import { reactiveState } from "./ReactiveState";
 
 
@@ -54,7 +53,7 @@ export type Store<State, Getters, Actions, Globals> = {
 } & {
     [K in keyof Getters]: OmitFirstParam<Getters[K]>
 } & {
-    [K in keyof Actions]: OmitFirstParam<Actions[K]>
+    [A in keyof Actions]: OmitFirstParam<Actions[A]>
 } & Globals & {
     $extend: <
         NewState extends Record<string, any>,
@@ -67,7 +66,7 @@ export type Store<State, Getters, Actions, Globals> = {
     ) => Store<
         State & NewState,
         Getters & NewGetters,
-        Actions & { [K in keyof NewActions]: OmitFirstParam<NewActions[K]> },
+        Actions & NewActions,
         Globals & NewGlobals
     >;
 };
@@ -173,7 +172,6 @@ export function useReactiveStore<
     RGetters extends Record<string, (ctx: any, ...args: any[]) => any>,
     RActions extends Record<string, (ctx: any, ...args: any[]) => any>,
     RGlobals extends Record<string, (...args: any[]) => any>>(initialConfig: ReactiveStoreParam<RState, RGetters, RActions, RGlobals> = {}) {
-    let storeModificationsAllowed = false;
     let stateModificationsAllowed = false;
     const stateInternal = reactiveState({}, stateModificationHandler);
     const eventEmitter = useKeyBasedEventEmitter();
@@ -282,8 +280,6 @@ export function useReactiveStore<
                 return ctxInternal.state[key];
             }
 
-
-
             let gettersFn = ctxInternal.getters[key];
 
             if (gettersFn != undefined) {
@@ -362,7 +358,7 @@ export function useReactiveStore<
 
     ctxData.$extend = createExtendMethod(ctx, ctxInternal, stateInternal);
 
-    ctxData.$extend(initialConfig);
+    
    
    stateInternal.on('change', (event) => {
        stateModificationsAllowed = false;
@@ -371,5 +367,5 @@ export function useReactiveStore<
 
        emitOnChange(event);
    });
-   return ctx;
+   return ctxData.$extend(initialConfig);
 }
