@@ -33,52 +33,6 @@ export function useEventEmitter(){
     }
 }
 
-export function useKeyBasedEventEmitter(){
-    const events: { [event: string]: EventEntry[] } = {};
-
-    function on(event: string, callback: EventCallback): void
-    function on(event: string, pattern: EventPattern, callback: EventCallback): void
-    function on(event: string, callbackOrPattern: EventCallback | EventPattern, callback?: EventCallback): void {
-        const _pattern = arguments.length == 2 ? '' : callbackOrPattern as EventPattern;
-        const _callback = arguments.length == 2 ? callbackOrPattern as EventCallback : callback as EventCallback;
-
-        if (!events[event]) {
-            events[event] = [];
-        }
-        events[event].push({ callback: _callback, pattern: _pattern });
-    }
-
-    function evaluatePattern(callbackPattern, key): boolean {
-        if (!callbackPattern)
-            return true;
-
-        if (callbackPattern == '*')
-            return true;
-
-        if (key.startsWith(callbackPattern))
-            return true;
-
-        return false;
-    }
-
-    function emit(event: string, key:EventKey, ...args: any[]): void {
-        let patternMatches = false;
-        if (events[event]) {
-            for (const eventEntry of events[event]) {
-                patternMatches = evaluatePattern(eventEntry.pattern, key);
-                if(patternMatches){
-                    eventEntry.callback(...args);
-                }
-            }
-        }
-    }
-
-    return {
-        on,
-        emit
-    }
-}
-
 
 export function usePatternBasedEventEmitter<EventMap extends Record<string, (...args: any[]) => any>>(){
     type EventCallback<T extends any[] = any[], R = void> = (...args: T) => R;
@@ -136,5 +90,4 @@ export function usePatternBasedEventEmitter<EventMap extends Record<string, (...
 }
 
 export type EventEmitter = ReturnType<typeof useEventEmitter>;
-export type KeyBasedEventEmitter = ReturnType<typeof useKeyBasedEventEmitter>;
 export type PatternBasedEventEmitter = ReturnType<typeof usePatternBasedEventEmitter>;

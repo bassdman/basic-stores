@@ -9,44 +9,25 @@ declare function useEventEmitter(): {
     on: (event: string, callback: EventCallback) => void;
     emit: (event: string, ...args: any[]) => void;
 };
-declare function useKeyBasedEventEmitter(): {
-    on: {
-        (event: string, callback: EventCallback): void;
-        (event: string, pattern: EventPattern, callback: EventCallback): void;
-    };
-    emit: (event: string, key: EventKey, ...args: any[]) => void;
-};
 type EventEmitter = ReturnType<typeof useEventEmitter>;
-type KeyBasedEventEmitter = ReturnType<typeof useKeyBasedEventEmitter>;
 
-type EmitParameterGet = {
-    key: string | symbol;
+type Key = string | symbol;
+type EmitParameterGetAndSet = {
+    key: Key;
     pathAsArray: string[];
     fullPath: string;
     target: Record<string, any>;
-};
-type EmitParameterSet = EmitParameterGet & {
     value: unknown;
 };
-type EmitParameterChange = EmitParameterSet & {
+type EmitParameterChange = EmitParameterGetAndSet & {
     oldValue: unknown;
 };
 type Callbacks = {
-    get?: (emitParameter: EmitParameterGet) => void;
-    set?: (emitParameter: EmitParameterSet) => void;
+    get?: (emitParameter: EmitParameterGetAndSet) => void;
+    set?: (emitParameter: EmitParameterGetAndSet) => void;
     change?: (emitParameter: EmitParameterChange) => void;
-    modificationsAllowed?: (emitParameter: EmitParameterSet) => boolean;
 };
-declare function createReactiveObject(input: Record<string, any>, callbacks?: Callbacks): Record<string, any>;
-
-declare function reactiveState(input: Record<string, any>, callbacks?: Callbacks): {
-    state: Record<string, any>;
-    on: {
-        (event: string, callback: EventCallback): void;
-        (event: string, pattern: EventPattern, callback: EventCallback): void;
-    };
-};
-type ReactiveState = ReturnType<typeof reactiveState>;
+declare function createReactiveObject(input: Record<Key, any>, callbacks?: Callbacks): Record<Key, any>;
 
 type ExtendMode = 'override' | 'keep' | 'error';
 type EventTypes = 'change' | `change-${string}`;
@@ -80,4 +61,4 @@ type Store<State, Getters, Actions, Globals> = {
 };
 declare function useReactiveStore<RState extends Record<string, any>, RGetters extends Record<string, (ctx: any, ...args: any[]) => any>, RActions extends Record<string, (ctx: any, ...args: any[]) => any>, RGlobals extends Record<string, (...args: any[]) => any>>(initialConfig?: ReactiveStoreParam<RState, RGetters, RActions, RGlobals>): Store<RState, RGetters, RActions, RGlobals>;
 
-export { type EventCallback, type EventEmitter, type EventEntry, type EventKey, type EventPattern, type EventTypes, type ExtendMode, type ExtendParam, type KeyBasedEventEmitter, type ReactiveState, type ReactiveStoreContext, type Store, createReactiveObject, reactiveState, useEventEmitter, useKeyBasedEventEmitter, useReactiveStore };
+export { type EventCallback, type EventEmitter, type EventEntry, type EventKey, type EventPattern, type EventTypes, type ExtendMode, type ExtendParam, type ReactiveStoreContext, type Store, createReactiveObject, useEventEmitter, useReactiveStore };

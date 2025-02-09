@@ -1,6 +1,5 @@
-import { EventCallback, EventEmitter, EventEntry, EventKey, EventPattern, KeyBasedEventEmitter, useEventEmitter, useKeyBasedEventEmitter } from "./EventEmitter";
+import { EventCallback, EventEmitter, EventEntry, EventKey, EventPattern, useEventEmitter } from "./EventEmitter";
 import { createReactiveObject } from "./ReactiveObject";
-import { ReactiveState, reactiveState } from "./ReactiveState";
 import { EventTypes, ExtendMode, ExtendParam, ReactiveStoreContext, Store, useReactiveStore } from "./ReactiveStore";
 
 export {
@@ -9,8 +8,6 @@ export {
     ReactiveStoreContext, 
     Store,
     createReactiveObject,
-    reactiveState,
-    ReactiveState,
     useReactiveStore,
     EventTypes,
 
@@ -19,7 +16,5 @@ export {
     EventKey,
     EventEntry,
     useEventEmitter,
-    useKeyBasedEventEmitter,
     EventEmitter,
-    KeyBasedEventEmitter
 }

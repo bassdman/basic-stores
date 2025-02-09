@@ -20,15 +20,15 @@ function useEventEmitter() {
         emit
     };
 }
-function useKeyBasedEventEmitter() {
-    const events = {};
+function usePatternBasedEventEmitter() {
+    const events = new Map();
     function on(event, callbackOrPattern, callback) {
         const _pattern = arguments.length == 2 ? '' : callbackOrPattern;
         const _callback = arguments.length == 2 ? callbackOrPattern : callback;
-        if (!events[event]) {
-            events[event] = [];
+        if (!events.has(event)) {
+            events.set(event, []);
         }
-        events[event].push({ callback: _callback, pattern: _pattern });
+        events.get(event).push({ callback: _callback, pattern: _pattern });
     }
     function evaluatePattern(callbackPattern, key) {
         if (!callbackPattern)
@@ -41,8 +41,8 @@ function useKeyBasedEventEmitter() {
     }
     function emit(event, key, ...args) {
         let patternMatches = false;
-        if (events[event]) {
-            for (const eventEntry of events[event]) {
+        if (events.has(event)) {
+            for (let eventEntry of events.get(event)) {
                 patternMatches = evaluatePattern(eventEntry.pattern, key);
                 if (patternMatches) {
                     eventEntry.callback(...args);
@@ -64,35 +64,23 @@ function createReactiveObjectInnerPart(input, pathAsArray = [], callbacks = {}) 
         get(target, key) {
             const fullPath = [...pathAsArray, key].join('.');
             const value = target[key];
-            callbacks?.get({ pathAsArray, fullPath, target, key });
             if (typeof value === 'object' && value !== null) {
                 return createReactiveObjectInnerPart(value, [...pathAsArray, key], callbacks);
             }
+            callbacks.get?.({ pathAsArray, fullPath, target, key, value });
             return value;
         },
         set(target, key, value) {
             const fullPath = [...pathAsArray, key].join('.');
-            callbacks?.set({ pathAsArray, fullPath, key, target, value });
-            let isAllowed = !callbacks.modificationsAllowed || callbacks.modificationsAllowed({ key, value, target, fullPath, pathAsArray });
-            if (!isAllowed)
-                return false;
+            callbacks.set?.({ pathAsArray, fullPath, key, target, value });
             const oldValue = target[key];
             if (oldValue !== value) {
                 target[key] = value;
-                callbacks?.change({ pathAsArray, fullPath, key, target, value, oldValue });
+                callbacks.change?.({ pathAsArray, fullPath, key, target, value, oldValue });
             }
             return true;
         }
     });
-}
-
-function reactiveState(input, callbacks) {
-    const eventEmitter = useKeyBasedEventEmitter();
-    const state = createReactiveObject(input, callbacks);
-    return {
-        state,
-        on: eventEmitter.on,
-    };
 }
 
 const emptyCachedStoreParam = {
@@ -137,7 +125,6 @@ function createCachedStore({ dependencies = {} } = emptyCachedStoreParam) {
         let key;
         let fn;
         let fnArgs;
-        // Falls der erste Parameter ein string ist, wurde ein eigener Schlüssel übergeben.
         if (typeof params[0] === "string") {
             key = params[0];
             fn = params[1];
@@ -211,7 +198,6 @@ function useEditPermissionStore() {
     };
 }
 function useStateDependencies() {
-    const emitter = useEventEmitter();
     const dependencies = {};
     const dependenciesReverse = {};
     let callStack = [];
@@ -229,10 +215,8 @@ function useStateDependencies() {
     }
     function startDependencyTracking(key) {
         callStack.push(key);
-        emitter.emit('start-dependency-tracking', { dependencies, dependenciesReverse, callStack, key, 'action': 'start' });
     }
     function finishDependencyTracking(key) {
-        emitter.emit('stop-dependency-tracking', { dependencies, dependenciesReverse, callStack, key, 'action': 'stop' });
         let dependenciesOfKey = dependenciesReverse[key] || [];
         let subDependencies;
         for (let subkey of dependenciesOfKey) {
@@ -266,7 +250,6 @@ function useStateDependencies() {
     return {
         dependencies() { return Object.assign({}, dependencies); },
         dependenciesReverse() { return Object.assign({}, dependenciesReverse); },
-        on: emitter.on,
         addPossibleDependency,
         startDependencyTracking,
         finishDependencyTracking,
@@ -282,18 +265,23 @@ function handleConflict(type, key, mode) {
         console.warn(`${message} - keeping existing`);
 }
 function useReactiveStore(initialConfig = {}) {
-    const eventEmitter = useKeyBasedEventEmitter();
+    const eventEmitter = usePatternBasedEventEmitter();
     const stateDependencies = useStateDependencies();
     const resultCache = {};
     const cachedStore = createCachedStore();
     const editGlobalPermissionStore = useEditPermissionStore();
     const editStatePermissionStore = useEditPermissionStore();
-    const stateInternal = createReactiveObject({}, {
-        modificationsAllowed({ key, value, target }) {
+    const stateInternal = createReactiveObject({ state: {} }, {
+        set({ key, value, target }) {
             if (!editStatePermissionStore.isAllowed()) {
                 throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(target)} with ${String(key)}=${value} outside.`);
             }
             return true;
+        },
+        get(event) {
+            if (event.value == undefined)
+                return;
+            stateDependencies.addPossibleDependency(event.key);
         },
         change(event) {
             stateDependencies.addPossibleDependency(event.key);
@@ -307,12 +295,6 @@ function useReactiveStore(initialConfig = {}) {
         getters: {},
         globals: {}
     };
-    stateDependencies.on('start-dependency-tracking', (data) => {
-        eventEmitter.emit('dependencies', 'start', data);
-    });
-    stateDependencies.on('stop-dependency-tracking', (data) => {
-        eventEmitter.emit('dependencies', 'stop', data);
-    });
     function createExtendMethod(store, ctxInternal, stateInternal) {
         return function extend(config, mode = 'error') {
             editGlobalPermissionStore.allow('extend');
@@ -379,9 +361,9 @@ function useReactiveStore(initialConfig = {}) {
                 stateDependencies.addPossibleDependency(key);
                 if (gettersFn.length <= 1) {
                     stateDependencies.startDependencyTracking(key);
-                    editStatePermissionStore.addBlockingPermission('global-' + key);
+                    editStatePermissionStore.addBlockingPermission('getter-' + key);
                     const result = cachedStore.execute(key, gettersFn, ctx);
-                    editStatePermissionStore.deleteBlockingPermission('global-' + key);
+                    editStatePermissionStore.deleteBlockingPermission('getter-' + key);
                     stateDependencies.finishDependencyTracking(key);
                     cachedStore.updateDependencies(stateDependencies.dependencies());
                     return result;
@@ -435,4 +417,4 @@ function useReactiveStore(initialConfig = {}) {
     return ctxData.$extend(initialConfig);
 }
 
-export { createReactiveObject, reactiveState, useEventEmitter, useKeyBasedEventEmitter, useReactiveStore };
+export { createReactiveObject, useEventEmitter, useReactiveStore };

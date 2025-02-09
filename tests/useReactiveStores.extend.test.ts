@@ -75,7 +75,7 @@ describe('store using Extend-Method directlyCalled', () => {
     assert.strictEqual(store.double, 2);
   });
 
-  it.only('should update getters recursively after running an action', (t) => {
+  it('should update getters recursively after running an action', (t) => {
     const store = useReactiveStore().$extend({
       state: {
         var1: 1

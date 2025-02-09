@@ -1,6 +1,6 @@
 
 import { createCachedStore } from "./CachedStore";
-import { EventCallback, EventPattern, useKeyBasedEventEmitter } from "./EventEmitter";
+import { EventCallback, EventPattern, usePatternBasedEventEmitter } from "./EventEmitter";
 import { createReactiveObject } from "./ReactiveObject";
 
 
@@ -200,7 +200,7 @@ export function useReactiveStore<
     RGlobals extends Record<string, (...args: any[]) => any>>(initialConfig: ReactiveStoreParam<RState, RGetters, RActions, RGlobals> = {}) {
 
 
-    const eventEmitter = useKeyBasedEventEmitter();
+    const eventEmitter = usePatternBasedEventEmitter();
     const stateDependencies = useStateDependencies();
     const resultCache = {};
     const cachedStore = createCachedStore();
