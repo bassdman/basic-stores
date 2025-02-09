@@ -1,29 +1,25 @@
-type Key = string | Symbol;
+type Key = string | symbol;
 
-type EmitParameterGet = {
-    key: string | symbol,
+type EmitParameterGetAndSet = {
+    key: Key,
     pathAsArray: string[],
     fullPath: string,
-    target: Record<string, any>
-}
-
-type EmitParameterSet = EmitParameterGet & {
+    target: Record<string, any>,
     value: unknown,
 }
 
-type EmitParameterChange = EmitParameterSet & {
+type EmitParameterChange = EmitParameterGetAndSet & {
     oldValue: unknown
 }
 
 export type Callbacks = {
-    get?: (emitParameter: EmitParameterGet) => void;
-    set?: (emitParameter: EmitParameterSet) => void;
+    get?: (emitParameter: EmitParameterGetAndSet) => void;
+    set?: (emitParameter: EmitParameterGetAndSet) => void;
     change?: (emitParameter: EmitParameterChange) => void;
-    modificationsAllowed?: (emitParameter: EmitParameterSet) => boolean
 };
 
 export function createReactiveObject(
-    input: Record<string, any>,
+    input: Record<Key, any>,
     callbacks: Callbacks = {}
 ) {
     return createReactiveObjectInnerPart(input, [], callbacks);
@@ -31,7 +27,7 @@ export function createReactiveObject(
 
 
 function createReactiveObjectInnerPart(
-    input: Record<string, any>,
+    input: Record<Key, any>,
     pathAsArray: string[] = [],
     callbacks: Callbacks = {}
 ) {
@@ -41,28 +37,24 @@ function createReactiveObjectInnerPart(
             const fullPath = [...pathAsArray, key].join('.');
             const value = target[key as keyof typeof target];
 
-            callbacks?.get({ pathAsArray, fullPath, target, key })
-
             if (typeof value === 'object' && value !== null) {
                 return createReactiveObjectInnerPart(value as Record<string, any>, [...pathAsArray, key as string], callbacks);
             }
+
+            callbacks.get?.({ pathAsArray, fullPath, target, key, value });
+
             return value;
         },
         set(target, key: string, value) {
             const fullPath = [...pathAsArray, key].join('.');
-            
-            callbacks?.set({ pathAsArray, fullPath, key, target, value })
-            let isAllowed = !callbacks.modificationsAllowed || callbacks.modificationsAllowed({ key, value, target, fullPath, pathAsArray });
-
-
-            if (!isAllowed)
-                return false;
+                        
+            callbacks.set?.({ pathAsArray, fullPath, key, target, value })
 
             const oldValue = target[key as keyof typeof target];
             if (oldValue !== value) {
                 target[key as keyof typeof target] = value;
 
-                callbacks?.change({ pathAsArray, fullPath, key, target, value, oldValue })
+                callbacks.change?.({ pathAsArray, fullPath, key, target, value, oldValue })
             }
             return true;
         }

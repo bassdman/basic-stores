@@ -1,9 +1,7 @@
 
 import { createCachedStore } from "./CachedStore";
-import { useEventEmitter, EventCallback, EventPattern, useKeyBasedEventEmitter } from "./EventEmitter";
-import { createRecursiveProxy } from "./lib/lib";
+import { EventCallback, EventPattern, useKeyBasedEventEmitter } from "./EventEmitter";
 import { createReactiveObject } from "./ReactiveObject";
-import { reactiveState } from "./ReactiveState";
 
 
 export type ExtendMode = 'override' | 'keep' | 'error';
@@ -106,7 +104,6 @@ function useEditPermissionStore() {
 }
 
 function useStateDependencies() {
-    const emitter = useEventEmitter();
     const dependencies = {};
     const dependenciesReverse = {};
     let callStack: string[] = [];
@@ -132,11 +129,8 @@ function useStateDependencies() {
 
     function startDependencyTracking(key) {
         callStack.push(key);
-        emitter.emit('start-dependency-tracking', { dependencies, dependenciesReverse, callStack, key, 'action': 'start' });
     }
     function finishDependencyTracking(key) {
-        emitter.emit('stop-dependency-tracking', { dependencies, dependenciesReverse, callStack, key, 'action': 'stop' });
-
         let dependenciesOfKey = dependenciesReverse[key] || [];
 
 
@@ -182,7 +176,6 @@ function useStateDependencies() {
     return {
         dependencies() { return Object.assign({}, dependencies) },
         dependenciesReverse() { return Object.assign({}, dependenciesReverse) },
-        on: emitter.on,
         addPossibleDependency,
         startDependencyTracking,
         finishDependencyTracking,
@@ -215,12 +208,18 @@ export function useReactiveStore<
     const editStatePermissionStore = useEditPermissionStore();
 
 
-    const stateInternal = createReactiveObject({}, {
-        modificationsAllowed({key, value, target}) {
+    const stateInternal = createReactiveObject({state:{}}, {
+        set({key, value, target}) {
             if (!editStatePermissionStore.isAllowed()) {
                 throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(target)} with ${String(key)}=${value} outside.`)
             }
             return true;
+        },
+        get(event){
+            if(event.value == undefined)
+                return;
+
+            stateDependencies.addPossibleDependency(event.key);
         },
         change(event){
             stateDependencies.addPossibleDependency(event.key);
@@ -236,13 +235,6 @@ export function useReactiveStore<
         getters: {},
         globals: {}
     } as InternalContext<RState, RGetters, RActions, RGlobals>;
-
-    stateDependencies.on('start-dependency-tracking', (data) => {
-        eventEmitter.emit('dependencies', 'start', data);
-    });
-    stateDependencies.on('stop-dependency-tracking', (data) => {
-        eventEmitter.emit('dependencies', 'stop', data);
-    });
 
     function createExtendMethod(store: any, ctxInternal: any, stateInternal: any) {
         return function extend<
@@ -326,14 +318,14 @@ export function useReactiveStore<
 
             if (gettersFn != undefined) {
                 stateDependencies.addPossibleDependency(key);
-
+                
                 if (gettersFn.length <= 1) {
                     stateDependencies.startDependencyTracking(key);
-                    editStatePermissionStore.addBlockingPermission('global-' + key);
+                    editStatePermissionStore.addBlockingPermission('getter-' + key);
 
                     const result = cachedStore.execute(key, gettersFn, ctx)
 
-                    editStatePermissionStore.deleteBlockingPermission('global-' + key);
+                    editStatePermissionStore.deleteBlockingPermission('getter-' + key);
                     stateDependencies.finishDependencyTracking(key);
 
                     cachedStore.updateDependencies(stateDependencies.dependencies());
