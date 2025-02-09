@@ -15,9 +15,9 @@ describe('Store-Actions',()=>{
       }
     });
   
-    assert.strictEqual(store.var1, 1);
+    assert.strictEqual(store.state.var1, 1);
     store.setTo2();
-    assert.strictEqual(store.var1, 2);
+    assert.strictEqual(store.state.var1, 2);
   });
 
   it('An action with parameter can be called', (t) => {

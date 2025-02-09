@@ -1,10 +1,10 @@
 
 import { useKeyBasedEventEmitter } from "./EventEmitter";
-import { createReactiveObject } from "./ReactiveObject";
+import { Callbacks, createReactiveObject } from "./ReactiveObject";
 
-export function reactiveState(input: Record<string, any>, modificationsAllowedCallback?: (key, value, target) => boolean) {
+export function reactiveState(input: Record<string, any>, callbacks?:Callbacks) {
     const eventEmitter = useKeyBasedEventEmitter();
-    const state = createReactiveObject(input, eventEmitter, [], modificationsAllowedCallback);
+    const state = createReactiveObject(input, callbacks);
 
     return {
         state,

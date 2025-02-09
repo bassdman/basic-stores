@@ -1,38 +1,70 @@
-import { KeyBasedEventEmitter } from "./EventEmitter";
+type Key = string | Symbol;
+
+type EmitParameterGet = {
+    key: string | symbol,
+    pathAsArray: string[],
+    fullPath: string,
+    target: Record<string, any>
+}
+
+type EmitParameterSet = EmitParameterGet & {
+    value: unknown,
+}
+
+type EmitParameterChange = EmitParameterSet & {
+    oldValue: unknown
+}
+
+export type Callbacks = {
+    get?: (emitParameter: EmitParameterGet) => void;
+    set?: (emitParameter: EmitParameterSet) => void;
+    change?: (emitParameter: EmitParameterChange) => void;
+    modificationsAllowed?: (emitParameter: EmitParameterSet) => boolean
+};
 
 export function createReactiveObject(
     input: Record<string, any>,
-    eventEmitter: KeyBasedEventEmitter,
-    path: string[] = [],
-    modificationsAllowedCallback?:(key,value,target)=>boolean
+    callbacks: Callbacks = {}
 ) {
+    return createReactiveObjectInnerPart(input, [], callbacks);
+}
+
+
+function createReactiveObjectInnerPart(
+    input: Record<string, any>,
+    pathAsArray: string[] = [],
+    callbacks: Callbacks = {}
+) {
+
     return new Proxy(input, {
         get(target, key) {
+            const fullPath = [...pathAsArray, key].join('.');
             const value = target[key as keyof typeof target];
+
+            callbacks?.get({ pathAsArray, fullPath, target, key })
+
             if (typeof value === 'object' && value !== null) {
-                // Rekursiv einen Proxy erstellen
-                return createReactiveObject(value as Record<string, any>, eventEmitter, [...path, key as string]);
+                return createReactiveObjectInnerPart(value as Record<string, any>, [...pathAsArray, key as string], callbacks);
             }
             return value;
         },
         set(target, key: string, value) {
-            let isAllowed = !modificationsAllowedCallback || modificationsAllowedCallback(key,value,target);
+            const fullPath = [...pathAsArray, key].join('.');
+            
+            callbacks?.set({ pathAsArray, fullPath, key, target, value })
+            let isAllowed = !callbacks.modificationsAllowed || callbacks.modificationsAllowed({ key, value, target, fullPath, pathAsArray });
 
-            if(!isAllowed)
+
+            if (!isAllowed)
                 return false;
 
             const oldValue = target[key as keyof typeof target];
             if (oldValue !== value) {
                 target[key as keyof typeof target] = value;
 
-                // Event mit vollständigem Pfad auslösen
-                const fullPath = [...path, key].join('.');
-                eventEmitter.emit('change', fullPath, { key, fullPath, value, oldValue, target });
+                callbacks?.change({ pathAsArray, fullPath, key, target, value, oldValue })
             }
             return true;
         }
     });
 }
-
-
-

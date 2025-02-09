@@ -1,6 +1,6 @@
 export type EventCallback = (...args: any[]) => void;
 export type EventPattern = string;
-export type EventKey = string;
+export type EventKey = string | Symbol;
 
 export interface EventEntry {
     callback: EventCallback,
@@ -79,5 +79,62 @@ export function useKeyBasedEventEmitter(){
     }
 }
 
+
+export function usePatternBasedEventEmitter<EventMap extends Record<string, (...args: any[]) => any>>(){
+    type EventCallback<T extends any[] = any[], R = void> = (...args: T) => R;
+    
+    interface EventEntry<T extends any[] = any[], R = void> {
+      pattern: string;
+      callback: EventCallback<T, R>;
+    }
+  
+    const events = new Map<keyof EventMap, EventEntry<any[], any>[]>();
+
+    function on<EventName extends keyof EventMap>(event: EventMap, callback: EventMap[EventName]): void
+    function on<EventName extends keyof EventMap>(event: EventMap, pattern: EventPattern, callback: EventCallback<Parameters<EventMap[EventName]>, ReturnType<EventMap[EventName]>>): void
+    function on<EventName extends keyof EventMap>(event: EventName, callbackOrPattern: EventCallback<Parameters<EventMap[EventName]>, ReturnType<EventMap[EventName]>> | EventPattern, callback?: EventCallback<Parameters<EventMap[EventName]>, ReturnType<EventMap[EventName]>>): void {
+
+        const _pattern = arguments.length == 2 ? '' : callbackOrPattern as EventPattern;
+        const _callback = arguments.length == 2 ? callbackOrPattern as EventMap[keyof EventMap] : callback as EventMap[keyof EventMap];
+
+        if(!events.has(event)){
+            events.set(event, []);
+        }
+
+        events.get(event)!.push({ callback: _callback, pattern: _pattern });
+    }
+
+    function evaluatePattern(callbackPattern, key): boolean {
+        if (!callbackPattern)
+            return true;
+
+        if (callbackPattern == '*')
+            return true;
+
+        if (key.startsWith(callbackPattern))
+            return true;
+
+        return false;
+    }
+
+    function emit<EventName extends keyof EventMap>(event: EventName, key:EventKey, ...args: Parameters<EventMap[EventName]>): ReturnType<EventMap[EventName]> | void {
+        let patternMatches = false;
+        if (events.has(event)) {
+            for(let eventEntry of events.get(event)!){
+                patternMatches = evaluatePattern(eventEntry.pattern, key);
+                if(patternMatches){
+                    eventEntry.callback(...args);
+                }
+            }
+        }
+    }
+
+    return {
+        on,
+        emit
+    }
+}
+
 export type EventEmitter = ReturnType<typeof useEventEmitter>;
 export type KeyBasedEventEmitter = ReturnType<typeof useKeyBasedEventEmitter>;
+export type PatternBasedEventEmitter = ReturnType<typeof usePatternBasedEventEmitter>;

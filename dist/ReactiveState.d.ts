@@ -1,4 +1,5 @@
-export declare function reactiveState(input: Record<string, any>, modificationsAllowedCallback?: (key: any, value: any, target: any) => boolean): {
+import { Callbacks } from "./ReactiveObject";
+export declare function reactiveState(input: Record<string, any>, callbacks?: Callbacks): {
     state: Record<string, any>;
     on: {
         (event: string, callback: import("./EventEmitter").EventCallback): void;

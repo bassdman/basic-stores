@@ -2,6 +2,7 @@
 import { createCachedStore } from "./CachedStore";
 import { useEventEmitter, EventCallback, EventPattern, useKeyBasedEventEmitter } from "./EventEmitter";
 import { createRecursiveProxy } from "./lib/lib";
+import { createReactiveObject } from "./ReactiveObject";
 import { reactiveState } from "./ReactiveState";
 
 
@@ -29,15 +30,11 @@ type InternalContext<State, Getters, Actions, Globals> = {
     globals: Globals
 }
 
-
-export type Namespace = { state: string, getters: string, actions: string, global: string }
-
 export type ReactiveStoreParam<State, Getters = GetterRecord<State>, Actions = ActionsRecord<State>, Globals = GlobalsRecord> = {
     state?: State,
     getters?: Getters,
     actions?: Actions,
     global?: Globals,
-    namespace?: Namespace
 }
 
 export type ExtendParam<State> = ReactiveStoreParam<State> & {
@@ -71,6 +68,42 @@ export type Store<State, Getters, Actions, Globals> = {
     >;
 };
 
+function useEditPermissionStore() {
+    let permissions = new Map<string, boolean>();
+    let blockedPermissions = new Map<string, boolean>();
+
+    function addBlockingPermission(permission: string) {
+        blockedPermissions.set(permission, true);
+    }
+    function deleteBlockingPermission(permission: string) {
+        blockedPermissions.delete(permission);
+    }
+
+    function allow(permission: string) {
+        permissions.set(permission, true);
+    }
+
+    function reject(permission: string) {
+        permissions.delete(permission)
+    }
+
+    function isAllowed(): boolean {
+        return blockedPermissions.size == 0 && permissions.size > 0;
+    }
+
+    function allowedPermissions() {
+        return permissions.keys();
+    }
+
+    return {
+        allow,
+        reject,
+        isAllowed,
+        allowedPermissions,
+        addBlockingPermission,
+        deleteBlockingPermission
+    }
+}
 
 function useStateDependencies() {
     const emitter = useEventEmitter();
@@ -99,10 +132,10 @@ function useStateDependencies() {
 
     function startDependencyTracking(key) {
         callStack.push(key);
-        emitter.emit('start-dependency-tracking',{dependencies,dependenciesReverse,callStack,key,'action':'start'});
+        emitter.emit('start-dependency-tracking', { dependencies, dependenciesReverse, callStack, key, 'action': 'start' });
     }
     function finishDependencyTracking(key) {
-        emitter.emit('stop-dependency-tracking',{dependencies,dependenciesReverse,callStack,key,'action':'stop'});
+        emitter.emit('stop-dependency-tracking', { dependencies, dependenciesReverse, callStack, key, 'action': 'stop' });
 
         let dependenciesOfKey = dependenciesReverse[key] || [];
 
@@ -147,8 +180,8 @@ function useStateDependencies() {
     }
 
     return {
-        dependencies(){return Object.assign({},dependencies)},
-        dependenciesReverse(){return Object.assign({},dependenciesReverse)},
+        dependencies() { return Object.assign({}, dependencies) },
+        dependenciesReverse() { return Object.assign({}, dependenciesReverse) },
         on: emitter.on,
         addPossibleDependency,
         startDependencyTracking,
@@ -172,13 +205,30 @@ export function useReactiveStore<
     RGetters extends Record<string, (ctx: any, ...args: any[]) => any>,
     RActions extends Record<string, (ctx: any, ...args: any[]) => any>,
     RGlobals extends Record<string, (...args: any[]) => any>>(initialConfig: ReactiveStoreParam<RState, RGetters, RActions, RGlobals> = {}) {
-    let stateModificationsAllowed = false;
-    const stateInternal = reactiveState({}, stateModificationHandler);
+
+
     const eventEmitter = useKeyBasedEventEmitter();
     const stateDependencies = useStateDependencies();
-    const namespace = initNamespace(initialConfig.namespace);
     const resultCache = {};
     const cachedStore = createCachedStore();
+    const editGlobalPermissionStore = useEditPermissionStore();
+    const editStatePermissionStore = useEditPermissionStore();
+
+
+    const stateInternal = createReactiveObject({}, {
+        modificationsAllowed({key, value, target}) {
+            if (!editStatePermissionStore.isAllowed()) {
+                throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(target)} with ${String(key)}=${value} outside.`)
+            }
+            return true;
+        },
+        change(event){
+            stateDependencies.addPossibleDependency(event.key);
+            cachedStore.set(event.key, event.value);
+
+            emitOnChange(event);
+        }
+    });
 
     const ctxInternal = {
         state: stateInternal.state,
@@ -187,19 +237,12 @@ export function useReactiveStore<
         globals: {}
     } as InternalContext<RState, RGetters, RActions, RGlobals>;
 
-    stateDependencies.on('start-dependency-tracking',(data)=>{
-        eventEmitter.emit('dependencies','start',data);
+    stateDependencies.on('start-dependency-tracking', (data) => {
+        eventEmitter.emit('dependencies', 'start', data);
     });
-    stateDependencies.on('stop-dependency-tracking',(data)=>{
-        eventEmitter.emit('dependencies','stop',data);
+    stateDependencies.on('stop-dependency-tracking', (data) => {
+        eventEmitter.emit('dependencies', 'stop', data);
     });
-
-    function stateModificationHandler(key, value, target) {
-        if (!stateModificationsAllowed) {
-            throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(target)} with ${key}=${value} outside.`)
-        }
-        return true;
-    }
 
     function createExtendMethod(store: any, ctxInternal: any, stateInternal: any) {
         return function extend<
@@ -211,15 +254,17 @@ export function useReactiveStore<
             config: ReactiveStoreParam<NewState, NewGetters, NewActions, NewGlobals>,
             mode: ExtendMode = 'error'
         ) {
-            stateModificationsAllowed = true;
+            editGlobalPermissionStore.allow('extend');
 
             if (config.state) {
+                editStatePermissionStore.allow('extend');
                 for (const key of Object.keys(config.state)) {
                     if (key in ctxInternal.state) {
                         handleConflict('state', key, mode);
                     }
                     stateInternal.state[key] = config.state[key];
                 }
+                editStatePermissionStore.reject('extend');
             }
 
             // Getters handling
@@ -241,12 +286,9 @@ export function useReactiveStore<
                     }
                     ctxInternal.actions[key] = action;
                     store[key] = (...args: any[]) => {
-                        const prev = stateModificationsAllowed;
-                        stateModificationsAllowed = true;
-
+                        editStatePermissionStore.allow('action');
                         action(ctxInternal, ...args);
-
-                        stateModificationsAllowed = prev;
+                        editStatePermissionStore.reject('action');
                     };
                 }
             }
@@ -261,7 +303,7 @@ export function useReactiveStore<
                 }
             }
 
-            stateModificationsAllowed = false;
+            editGlobalPermissionStore.reject('extend');
 
             return store as any;
         };
@@ -273,7 +315,7 @@ export function useReactiveStore<
         $emit: eventEmitter.emit,
     } as unknown as Store<RState, RGetters, RActions, RGlobals>;
 
-    const ctx = createRecursiveProxy(ctxData, {
+    const ctx = new Proxy(ctxData, {
         get(target, key: string) {
             if (ctxInternal.state[key] != undefined) {
                 stateDependencies.addPossibleDependency(key);
@@ -287,9 +329,11 @@ export function useReactiveStore<
 
                 if (gettersFn.length <= 1) {
                     stateDependencies.startDependencyTracking(key);
+                    editStatePermissionStore.addBlockingPermission('global-' + key);
 
-                    const result = cachedStore.execute(key,gettersFn,ctx)
+                    const result = cachedStore.execute(key, gettersFn, ctx)
 
+                    editStatePermissionStore.deleteBlockingPermission('global-' + key);
                     stateDependencies.finishDependencyTracking(key);
 
                     cachedStore.updateDependencies(stateDependencies.dependencies());
@@ -299,7 +343,11 @@ export function useReactiveStore<
                 else {
                     return (...args: any[]) => {
                         stateDependencies.startDependencyTracking(key);
+                        editStatePermissionStore.addBlockingPermission('global-' + key);
+
                         const result = gettersFn(ctx, ...args);
+
+                        editStatePermissionStore.deleteBlockingPermission('global-' + key);
                         stateDependencies.finishDependencyTracking(key);
                         return result;
                     };
@@ -309,9 +357,9 @@ export function useReactiveStore<
             const actionFn = ctxInternal.actions[key];
             if (actionFn !== undefined) {
                 return function (...args: any[]) {
-                    stateModificationsAllowed = true;
+                    editStatePermissionStore.allow('action');
                     actionFn(ctx, ...args);
-                    stateModificationsAllowed = false;
+                    editStatePermissionStore.reject('action');
                 }
             }
 
@@ -323,26 +371,17 @@ export function useReactiveStore<
             return target[key];
         },
         set(target, key, value) {
-            if (stateModificationsAllowed) {
+            if (editGlobalPermissionStore.isAllowed()) {
                 target[key as keyof typeof target] = value;
-            }else {
+            }
+            else {
                 console.warn('stateModification is not allowed. did you change the state outside of an action?')
             }
-            
+
 
             return true;
         }
     });
-
-    function initNamespace(namespaceParam?: string | Namespace): Namespace {
-        if (!namespaceParam) {
-            return { state: 'state', getters: '', actions: '', global: '' };
-        }
-        if (typeof namespaceParam == 'string') {
-            return { state: namespaceParam, getters: namespaceParam, actions: namespaceParam, global: namespaceParam };
-        }
-        return namespaceParam;
-    }
 
     function emitOnChange({ key, value, target, fullPath }) {
         const dependencies = stateDependencies.getDependenciesOf(key);
@@ -358,14 +397,5 @@ export function useReactiveStore<
 
     ctxData.$extend = createExtendMethod(ctx, ctxInternal, stateInternal);
 
-    
-   
-   stateInternal.on('change', (event) => {
-       stateModificationsAllowed = false;
-
-       cachedStore.set(event.key,event.value);
-
-       emitOnChange(event);
-   });
-   return ctxData.$extend(initialConfig);
+    return ctxData.$extend(initialConfig);
 }

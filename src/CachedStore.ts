@@ -1,4 +1,4 @@
-type Dependencies = Record<string,string[]>;
+type Dependencies = Record<string|symbol,string[]>;
 type CreateCachedStoreParam = {
     dependencies: Dependencies
 }
@@ -9,8 +9,8 @@ const emptyCachedStoreParam = {
 
 export function createCachedStore({dependencies={}} : CreateCachedStoreParam = emptyCachedStoreParam) {
 
-    const cache = new Map<string, any>();
-    const dirtyEntries = new Map<string,boolean>();
+    const cache = new Map<string|Symbol, any>();
+    const dirtyEntries = new Map<string|Symbol,boolean>();
     let _dependencies :Dependencies = dependencies;
 
     function updateDependencies(dependencies: Dependencies) : void{
@@ -77,7 +77,7 @@ export function createCachedStore({dependencies={}} : CreateCachedStoreParam = e
       return result;
     }
 
-    function set<T>(key:string, value:T){
+    function set<T>(key:string|symbol, value:T){
         cache.set(key,value);
         dirtyEntries.set(key,false);
 
