@@ -1,6 +1,6 @@
 type Key = string | symbol;
 
-type EmitParameterGetAndSet = {
+export type EmitParameterGetAndSet = {
     key: Key,
     pathAsArray: string[],
     fullPath: string,
@@ -8,7 +8,7 @@ type EmitParameterGetAndSet = {
     value: unknown,
 }
 
-type EmitParameterChange = EmitParameterGetAndSet & {
+export type EmitParameterChange = EmitParameterGetAndSet & {
     oldValue: unknown
 }
 

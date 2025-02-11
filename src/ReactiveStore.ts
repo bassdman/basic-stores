@@ -1,7 +1,7 @@
 
 import { createCachedStore } from "./CachedStore";
 import { EventCallback, EventPattern, usePatternBasedEventEmitter } from "./EventEmitter";
-import { createReactiveObject } from "./ReactiveObject";
+import { createReactiveObject, EmitParameterGetAndSet } from "./ReactiveObject";
 
 
 export type ExtendMode = 'override' | 'keep' | 'error';
@@ -190,8 +190,12 @@ function handleConflict(type: string, key: string, mode: ExtendMode) {
     if (mode === 'keep') console.warn(`${message} - keeping existing`);
 }
 
-
-
+type ReactiveStoreEmitter = {
+    "change-getter": (data: { key: any, value: any, target: Record<string, any>, totalTarget: any }) => void;
+    "change": (data: { fullPath: string, key: any, keyIncludingGetters: any, value: any, target: Record<string, any>, totalTarget: any }) => void;
+    get: (data:EmitParameterGetAndSet)=>void;
+    set: (data:EmitParameterGetAndSet)=>void
+};
 
 export function useReactiveStore<
     RState extends Record<string, any>,
@@ -199,33 +203,45 @@ export function useReactiveStore<
     RActions extends Record<string, (ctx: any, ...args: any[]) => any>,
     RGlobals extends Record<string, (...args: any[]) => any>>(initialConfig: ReactiveStoreParam<RState, RGetters, RActions, RGlobals> = {}) {
 
-
-    const eventEmitter = usePatternBasedEventEmitter();
+    const eventEmitter = usePatternBasedEventEmitter<ReactiveStoreEmitter>();
     const stateDependencies = useStateDependencies();
-    const resultCache = {};
+
     const cachedStore = createCachedStore();
     const editGlobalPermissionStore = useEditPermissionStore();
     const editStatePermissionStore = useEditPermissionStore();
 
 
-    const stateInternal = createReactiveObject({state:{}}, {
-        set({key, value, target}) {
+    const stateInternal = createReactiveObject({ state: {} }, {
+        set(event) {
             if (!editStatePermissionStore.isAllowed()) {
-                throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(target)} with ${String(key)}=${value} outside.`)
+                throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(event.target)} with ${String(event.key)}=${event.value} outside.`)
             }
+            eventEmitter.emit('set', event.key, event);
+
             return true;
         },
-        get(event){
-            if(event.value == undefined)
+        get(event) {
+            if (event.value == undefined)
                 return;
+
+            eventEmitter.emit('get', event.key, event);
 
             stateDependencies.addPossibleDependency(event.key);
         },
-        change(event){
+        change(event) {
             stateDependencies.addPossibleDependency(event.key);
             cachedStore.set(event.key, event.value);
 
-            emitOnChange(event);
+            const dependencies = stateDependencies.getDependenciesOf(event.key);
+            const totalTarget = { ...stateInternal.state };
+            let keyIncludingGetters = [event.key];
+    
+            for (let dep of dependencies) {
+                keyIncludingGetters.push(dep);
+                eventEmitter.emit('change-getter', dep, { key: dep, value: totalTarget[dep], target: event.target, totalTarget });
+            }
+
+            eventEmitter.emit('change', event.key, { fullPath:event.fullPath, key:event.key, keyIncludingGetters, value:event.value, target: stateInternal.state, totalTarget });
         }
     });
 
@@ -309,16 +325,11 @@ export function useReactiveStore<
 
     const ctx = new Proxy(ctxData, {
         get(target, key: string) {
-            if (ctxInternal.state[key] != undefined) {
-                stateDependencies.addPossibleDependency(key);
-                return ctxInternal.state[key];
-            }
-
             let gettersFn = ctxInternal.getters[key];
 
             if (gettersFn != undefined) {
                 stateDependencies.addPossibleDependency(key);
-                
+
                 if (gettersFn.length <= 1) {
                     stateDependencies.startDependencyTracking(key);
                     editStatePermissionStore.addBlockingPermission('getter-' + key);
@@ -370,22 +381,9 @@ export function useReactiveStore<
                 console.warn('stateModification is not allowed. did you change the state outside of an action?')
             }
 
-
             return true;
         }
     });
-
-    function emitOnChange({ key, value, target, fullPath }) {
-        const dependencies = stateDependencies.getDependenciesOf(key);
-        const totalTarget = { ...stateInternal.state, ...resultCache };
-        let keyIncludingGetters = [key];
-
-        for (let dep of dependencies) {
-            keyIncludingGetters.push(dep);
-            eventEmitter.emit('change-getter', dep, { key: dep, value: totalTarget[dep], target, totalTarget });
-        }
-        eventEmitter.emit('change', key, { fullPath, key, keyIncludingGetters, value, target: stateInternal.state, totalTarget });
-    }
 
     ctxData.$extend = createExtendMethod(ctx, ctxInternal, stateInternal);
 

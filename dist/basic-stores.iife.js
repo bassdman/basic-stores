@@ -270,26 +270,34 @@ var BasicStores = (function (exports) {
     function useReactiveStore(initialConfig = {}) {
         const eventEmitter = usePatternBasedEventEmitter();
         const stateDependencies = useStateDependencies();
-        const resultCache = {};
         const cachedStore = createCachedStore();
         const editGlobalPermissionStore = useEditPermissionStore();
         const editStatePermissionStore = useEditPermissionStore();
         const stateInternal = createReactiveObject({ state: {} }, {
-            set({ key, value, target }) {
+            set(event) {
                 if (!editStatePermissionStore.isAllowed()) {
-                    throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(target)} with ${String(key)}=${value} outside.`);
+                    throw new Error(`State-modification is only allowed inside of an action. You tried to change the state ${JSON.stringify(event.target)} with ${String(event.key)}=${event.value} outside.`);
                 }
+                eventEmitter.emit('set', event.key, event);
                 return true;
             },
             get(event) {
                 if (event.value == undefined)
                     return;
+                eventEmitter.emit('get', event.key, event);
                 stateDependencies.addPossibleDependency(event.key);
             },
             change(event) {
                 stateDependencies.addPossibleDependency(event.key);
                 cachedStore.set(event.key, event.value);
-                emitOnChange(event);
+                const dependencies = stateDependencies.getDependenciesOf(event.key);
+                const totalTarget = { ...stateInternal.state };
+                let keyIncludingGetters = [event.key];
+                for (let dep of dependencies) {
+                    keyIncludingGetters.push(dep);
+                    eventEmitter.emit('change-getter', dep, { key: dep, value: totalTarget[dep], target: event.target, totalTarget });
+                }
+                eventEmitter.emit('change', event.key, { fullPath: event.fullPath, key: event.key, keyIncludingGetters, value: event.value, target: stateInternal.state, totalTarget });
             }
         });
         const ctxInternal = {
@@ -355,10 +363,6 @@ var BasicStores = (function (exports) {
         };
         const ctx = new Proxy(ctxData, {
             get(target, key) {
-                if (ctxInternal.state[key] != undefined) {
-                    stateDependencies.addPossibleDependency(key);
-                    return ctxInternal.state[key];
-                }
                 let gettersFn = ctxInternal.getters[key];
                 if (gettersFn != undefined) {
                     stateDependencies.addPossibleDependency(key);
@@ -406,16 +410,6 @@ var BasicStores = (function (exports) {
                 return true;
             }
         });
-        function emitOnChange({ key, value, target, fullPath }) {
-            const dependencies = stateDependencies.getDependenciesOf(key);
-            const totalTarget = { ...stateInternal.state, ...resultCache };
-            let keyIncludingGetters = [key];
-            for (let dep of dependencies) {
-                keyIncludingGetters.push(dep);
-                eventEmitter.emit('change-getter', dep, { key: dep, value: totalTarget[dep], target, totalTarget });
-            }
-            eventEmitter.emit('change', key, { fullPath, key, keyIncludingGetters, value, target: stateInternal.state, totalTarget });
-        }
         ctxData.$extend = createExtendMethod(ctx, ctxInternal, stateInternal);
         return ctxData.$extend(initialConfig);
     }
